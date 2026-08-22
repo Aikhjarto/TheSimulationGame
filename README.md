@@ -37,3 +37,23 @@ the-simulation-game
 - Use the edge tool to set traversability between neighboring cells
 - Toggle visual mode to switch between circles and numbers
 - Save Map / Load Map to persist or restore full map state
+
+
+## Math
+$v(t)$: vegetation density 
+
+$g(t)$: grazer population
+
+$p(t)$: predator population
+
+$$
+\frac{\mathrm dv(t)}{\mathrm{dt}} = k_\mathrm v v(t) \left(1-\frac{v(t)}{v_\mathrm{max}}\right) - k_\mathrm g g(t)
+$$
+
+$$
+\frac{\mathrm dg(t)}{\mathrm{dt}} = k_\mathrm g g(t) \ln\left(k_\mathrm{gv} \frac{g(t)}{v(t)}\right) - k_\mathrm{gp} p(t)
+$$
+
+$$
+\frac{\mathrm d p(t)}{\mathrm{dt}} = k_\mathrm p p(t) \ln\left(k_\mathrm{pg} \frac{p(t)}{g(t)}\right)
+$$

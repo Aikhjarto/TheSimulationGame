@@ -13,22 +13,23 @@ from typing import Callable
 @dataclass
 class Cell:
     plant: float = 20.0
-    prey: float = 8.0
+    grazer: float = 8.0
     predator: float = 3.0
 
-    plant_growth: float = 1.9
-    plant_nutrition: float = 0.20
-    hunt_success: float = 0.08
-    prey_death_rate: float = 0.04
-    predator_death_rate: float = 0.03
+    k_v: float = 0.10
+    k_g: float = 0.01
+    k_gv: float = 1.0
+    k_gp: float = 0.01
+    k_p: float = 0.01
+    k_pg: float = 1.0
 
     max_plant: float = 100.0
-    max_prey: float = 50.0
+    max_grazer: float = 50.0
     max_predator: float = 30.0
 
     def clamp_non_negative(self) -> None:
         self.plant = max(0.0, self.plant)
-        self.prey = max(0.0, self.prey)
+        self.grazer = max(0.0, self.grazer)
         self.predator = max(0.0, self.predator)
 
 
@@ -83,7 +84,7 @@ class HexSimulation:
         for row in self.grid:
             for cell in row:
                 cell.plant = 0.0
-                cell.prey = 0.0
+                cell.grazer = 0.0
                 cell.predator = 0.0
         self._init_edges(1.0)
 
@@ -91,17 +92,18 @@ class HexSimulation:
         for row in self.grid:
             for cell in row:
                 cell.max_plant = random.uniform(70.0, 150.0)
-                cell.max_prey = random.uniform(30.0, 70.0)
+                cell.max_grazer = random.uniform(30.0, 70.0)
                 cell.max_predator = random.uniform(15.0, 45.0)
 
-                cell.plant_growth = random.uniform(1.0, 1.08)
-                cell.plant_nutrition = random.uniform(0.03, 0.22)
-                cell.hunt_success = random.uniform(0.03, 0.25)
-                cell.prey_death_rate = random.uniform(0.01, 0.12)
-                cell.predator_death_rate = random.uniform(0.01, 0.12)
+                cell.k_v = random.uniform(0.05, 0.2)
+                cell.k_g = random.uniform(0.005, 0.02)
+                cell.k_gv = random.uniform(0.5, 2.0)
+                cell.k_gp = random.uniform(0.005, 0.02)
+                cell.k_p = random.uniform(0.005, 0.02)
+                cell.k_pg = random.uniform(0.5, 2.0)
 
                 cell.plant = random.uniform(0.0, cell.max_plant)
-                cell.prey = random.uniform(0.0, cell.max_prey)
+                cell.grazer = random.uniform(0.0, cell.max_grazer)
                 cell.predator = random.uniform(0.0, cell.max_predator)
 
         for key in list(self.edges):
@@ -112,34 +114,40 @@ class HexSimulation:
             for c in range(self.cols):
                 cell = self.grid[r][c]
 
-                # plants growth
-                cell.plant *= max(0.0, cell.plant_growth)
+                vegetation = cell.plant
+                grazers = cell.grazer
+                predators = cell.predator
+                vegetation_derivative = (
+                    cell.k_v * vegetation * (1.0 - vegetation / cell.max_plant)
+                    - cell.k_g * grazers
+                )
+                grazer_derivative = self._logarithmic_derivative(
+                    cell.k_g * grazers,
+                    cell.k_gv * grazers,
+                    vegetation,
+                ) - cell.k_gp * predators
+                predator_derivative = self._logarithmic_derivative(
+                    cell.k_p * predators,
+                    cell.k_pg * predators,
+                    grazers,
+                )
 
-                # plants eaten by prey
-                plants_devoured = cell.prey / cell.plant_nutrition
-                cell.plant -= plants_devoured
-
-                # prey death
-                cell.prey *= max(0.0, 1.0 - cell.prey_death_rate)
-
-                # prey changed by available plants (negative if not enough plants to eat)
-                cell.prey += cell.plant * cell.plant_nutrition
-
-                # predeator death
-                cell.predator *= max(0.0, 1.0 - cell.predator_death_rate)
-
-                # predators eat prey
-                prey_devoured = cell.predator * cell.hunt_success
-                cell.prey -= prey_devoured
-
-                # number of predator change
-                cell.predator = cell.prey * cell.hunt_success
-                
+                cell.plant = vegetation + vegetation_derivative
+                cell.grazer = grazers + grazer_derivative
+                cell.predator = predators + predator_derivative
                 cell.clamp_non_negative()
 
         self._apply_overflow("plant", "max_plant", rounds=2)
-        self._apply_overflow("prey", "max_prey", rounds=2)
+        self._apply_overflow("grazer", "max_grazer", rounds=2)
         self._apply_overflow("predator", "max_predator", rounds=2)
+
+    @staticmethod
+    def _logarithmic_derivative(
+        coefficient: float, numerator: float, denominator: float
+    ) -> float:
+        if coefficient == 0.0 or numerator <= 0.0 or denominator <= 0.0:
+            return 0.0
+        return coefficient * math.log(numerator / denominator)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -185,17 +193,16 @@ class HexSimulation:
                 new_row.append(
                     Cell(
                         plant=float(item.get("plant", 0.0)),
-                        prey=float(item.get("prey", 0.0)),
+                        grazer=float(item.get("grazer", 0.0)),
                         predator=float(item.get("predator", 0.0)),
-                        plant_growth=float(item.get("plant_growth", 1.0)),
-                        plant_nutrition=float(item.get("plant_nutrition", 0.0)),
-                        hunt_success=float(item.get("hunt_success", 0.0)),
-                        prey_death_rate=float(item.get("prey_death_rate", 0.0)),
-                        predator_death_rate=float(
-                            item.get("predator_death_rate", 0.0)
-                        ),
+                        k_v=float(item.get("k_v", 0.10)),
+                        k_g=float(item.get("k_g", 0.01)),
+                        k_gv=float(item.get("k_gv", 1.0)),
+                        k_gp=float(item.get("k_gp", 0.01)),
+                        k_p=float(item.get("k_p", 0.01)),
+                        k_pg=float(item.get("k_pg", 1.0)),
                         max_plant=max(0.01, float(item.get("max_plant", 1.0))),
-                        max_prey=max(0.01, float(item.get("max_prey", 1.0))),
+                        max_grazer=max(0.01, float(item.get("max_grazer", 1.0))),
                         max_predator=max(0.01, float(item.get("max_predator", 1.0))),
                     )
                 )
@@ -369,18 +376,19 @@ class HexSimulationApp:
 
         tools = [
             "spawn_plant",
-            "spawn_prey",
+            "spawn_grazer",
             "spawn_predator",
             "set_plant",
-            "set_prey",
+            "set_grazer",
             "set_predator",
-            "set_plant_growth",
-            "set_plant_nutrition",
-            "set_hunt_success",
-            "set_prey_death_rate",
-            "set_predator_death_rate",
+            "set_k_v",
+            "set_k_g",
+            "set_k_gv",
+            "set_k_gp",
+            "set_k_p",
+            "set_k_pg",
             "set_max_plant",
-            "set_max_prey",
+            "set_max_grazer",
             "set_max_predator",
             "set_edge_traversability",
         ]
@@ -407,7 +415,7 @@ class HexSimulationApp:
         ttk.Label(controls, text="Green circle: Plant matter").grid(
             row=18, column=0, sticky="w"
         )
-        ttk.Label(controls, text="Gold circle: Prey animals").grid(
+        ttk.Label(controls, text="Gold circle: grazer animals").grid(
             row=19, column=0, sticky="w"
         )
         ttk.Label(controls, text="Red circle: Predator animals").grid(
@@ -522,7 +530,7 @@ class HexSimulationApp:
         if self.show_numbers.get():
             text = (
                 f"pl {cell.plant:.0f}\n"
-                f"pr {cell.prey:.0f}\n"
+                f"pr {cell.grazer:.0f}\n"
                 f"pd {cell.predator:.0f}"
             )
             self.canvas.create_text(
@@ -537,7 +545,7 @@ class HexSimulationApp:
 
         ratios = [
             (cell.plant / max(cell.max_plant, 1e-6), "#62d96b", (-11.0, -8.0)),
-            (cell.prey / max(cell.max_prey, 1e-6), "#f2cf4a", (11.0, -8.0)),
+            (cell.grazer / max(cell.max_grazer, 1e-6), "#f2cf4a", (11.0, -8.0)),
             (cell.predator / max(cell.max_predator, 1e-6), "#e05b5b", (0.0, 11.0)),
         ]
 
@@ -606,22 +614,23 @@ class HexSimulationApp:
 
         direct_map = {
             "set_plant": "plant",
-            "set_prey": "prey",
+            "set_grazer": "grazer",
             "set_predator": "predator",
-            "set_plant_growth": "plant_growth",
-            "set_plant_nutrition": "plant_nutrition",
-            "set_hunt_success": "hunt_success",
-            "set_prey_death_rate": "prey_death_rate",
-            "set_predator_death_rate": "predator_death_rate",
+            "set_k_v": "k_v",
+            "set_k_g": "k_g",
+            "set_k_gv": "k_gv",
+            "set_k_gp": "k_gp",
+            "set_k_p": "k_p",
+            "set_k_pg": "k_pg",
             "set_max_plant": "max_plant",
-            "set_max_prey": "max_prey",
+            "set_max_grazer": "max_grazer",
             "set_max_predator": "max_predator",
         }
 
         if tool in direct_map:
             attr = direct_map[tool]
-            if "rate" in attr or attr in {"plant_nutrition", "hunt_success"}:
-                value = max(0.0, min(1.0, value))
+            if attr in {"k_gv", "k_pg"}:
+                value = max(1e-12, value)
             elif attr.startswith("max_"):
                 value = max(0.01, value)
             else:
@@ -629,8 +638,8 @@ class HexSimulationApp:
             setattr(cell, attr, value)
         elif tool == "spawn_plant":
             cell.plant = max(0.0, cell.plant + value)
-        elif tool == "spawn_prey":
-            cell.prey = max(0.0, cell.prey + value)
+        elif tool == "spawn_grazer":
+            cell.grazer = max(0.0, cell.grazer + value)
         elif tool == "spawn_predator":
             cell.predator = max(0.0, cell.predator + value)
 
@@ -717,18 +726,14 @@ class HexSimulationApp:
             "\n".join(
                 [
                     f"Cell ({r}, {c})",
-                    f"plant={cell.plant:.2f}, prey={cell.prey:.2f}, predator={cell.predator:.2f}",
-                    (
-                        "growth={:.2f}, nutrition={:.2f}, hunt={:.2f}, "
-                        "prey_death={:.2f}, predator_death={:.2f}"
-                    ).format(
-                        cell.plant_growth,
-                        cell.plant_nutrition,
-                        cell.hunt_success,
-                        cell.prey_death_rate,
-                        cell.predator_death_rate,
+                    f"plant={cell.plant:.2f}, grazer={cell.grazer:.2f}, predator={cell.predator:.2f}",
+                    "k_v={:.2f}, k_g={:.2f}, k_gv={:.2f}".format(
+                        cell.k_v, cell.k_g, cell.k_gv
                     ),
-                    f"max_plant={cell.max_plant:.2f}, max_prey={cell.max_prey:.2f}, max_predator={cell.max_predator:.2f}",
+                    "k_gp={:.2f}, k_p={:.2f}, k_pg={:.2f}".format(
+                        cell.k_gp, cell.k_p, cell.k_pg
+                    ),
+                    f"max_plant={cell.max_plant:.2f}, max_grazer={cell.max_grazer:.2f}, max_predator={cell.max_predator:.2f}",
                     "edges: " + ", ".join(edge_parts),
                 ]
             )
@@ -752,7 +757,7 @@ class HexSimulationApp:
         self.model.clear_map()
         self.running = False
         self.pause_btn.configure(text="Resume")
-        self.info_var.set("Map cleared: all plant, prey, and predator values set to 0.")
+        self.info_var.set("Map cleared: all plant, grazer, and predator values set to 0.")
         self.tick_count += 1
         self._record_all_histories()
         self._redraw_all()
@@ -824,7 +829,7 @@ class HexSimulationApp:
         key = (r, c)
         if key not in self.cell_history:
             self.cell_history[key] = []
-        self.cell_history[key].append((self.tick_count, cell.plant, cell.prey, cell.predator))
+        self.cell_history[key].append((self.tick_count, cell.plant, cell.grazer, cell.predator))
 
         # Keep only the last N ticks of history for each cell.
         min_tick = self.tick_count - self.history_limit + 1
@@ -913,7 +918,7 @@ class HexSimulationApp:
 
         legend = [
             ("Plant", "#62d96b"),
-            ("Prey", "#f2cf4a"),
+            ("grazer", "#f2cf4a"),
             ("Predator", "#e05b5b"),
         ]
         legend_x = right - 170
@@ -948,10 +953,10 @@ class HexSimulationApp:
 
         times = [p[0] for p in history]
         plants = [p[1] for p in history]
-        preys = [p[2] for p in history]
+        grazers = [p[2] for p in history]
         predators = [p[3] for p in history]
 
-        all_values = plants + preys + predators
+        all_values = plants + grazers + predators
         y_max = max(1.0, max(all_values))
         y_min = 0.0
         x_min = float(min(times))
@@ -978,7 +983,7 @@ class HexSimulationApp:
             )
 
         self._draw_series_line(history_canvas, times, plants, "#62d96b", to_xy)
-        self._draw_series_line(history_canvas, times, preys, "#f2cf4a", to_xy)
+        self._draw_series_line(history_canvas, times, grazers, "#f2cf4a", to_xy)
         self._draw_series_line(history_canvas, times, predators, "#e05b5b", to_xy)
 
         history_canvas.create_text(
