@@ -18,6 +18,10 @@ classifiers = [
   "License :: Other/Proprietary License",
   "Operating System :: OS Independent"
 ]
+dependencies = ["matplotlib>=3.8"]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
 
 [project.scripts]
 the-simulation-game = "simulation_game.app:main"

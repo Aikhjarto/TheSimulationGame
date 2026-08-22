@@ -1,2 +1,3 @@
-# This project uses only Python standard-library modules.
-# Keeping this file for dependency tooling compatibility.
+# Runtime and test dependencies for the simulation and experiment exports.
+matplotlib>=3.8
+pytest>=8.0
