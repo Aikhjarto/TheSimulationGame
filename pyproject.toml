@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "the-simulation-game"
+version = "0.1.0"
+description = "Hex-grid ecosystem simulation game with editable parameters"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE.txt" }
+authors = [
+  { name = "Original Author" }
+]
+keywords = ["simulation", "hex-grid", "ecosystem", "game", "tkinter"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: Other/Proprietary License",
+  "Operating System :: OS Independent"
+]
+
+[project.scripts]
+the-simulation-game = "simulation_game.app:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.flake8]
+max-line-length = 120
+
+[tool.ruff]
+line-length = 120
