@@ -1,11 +1,11 @@
 import csv
+import random
 from pathlib import Path
-from simulation_game.Cell import Cell
+from typing import Sequence
+
 import matplotlib.pyplot as plt
 
-
-import random
-from typing import Sequence
+from simulation_game.Cell import Cell
 
 
 class HexSimulation:
@@ -247,7 +247,9 @@ class HexSimulation:
             for c in range(self.cols):
                 cell = self.grid[r][c]
                 ticks = range(len(cell.hist_plant))
-                csv_path = destination.joinpath(f"hex_simulation_{r}x{c}_{cell.name}.csv")
+                csv_path = destination.joinpath(
+                    f"hex_simulation_{r}x{c}_{cell.name}.csv"
+                )
                 with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
                     writer = csv.writer(csv_file)
                     writer.writerow(["tick", "vegetation", "grazers", "predators"])
@@ -275,9 +277,13 @@ class HexSimulation:
                     ticks = range(len(cell.hist_plant))
                     axis.clear()
                     caption.set_text(parameters)
-                    axis.plot(ticks, cell.hist_plant, label="Vegetation", color="#4caa62")
+                    axis.plot(
+                        ticks, cell.hist_plant, label="Vegetation", color="#4caa62"
+                    )
                     axis.plot(ticks, cell.hist_grazer, label="Grazers", color="#d4a72c")
-                    axis.plot(ticks, cell.hist_predator, label="Predators", color="#c94c4c")
+                    axis.plot(
+                        ticks, cell.hist_predator, label="Predators", color="#c94c4c"
+                    )
                     axis.set_xlabel("Tick")
                     axis.set_ylabel("Population / density")
                     axis.set_title(f"{r}x{c} ecosystem over {len(ticks)} ticks")

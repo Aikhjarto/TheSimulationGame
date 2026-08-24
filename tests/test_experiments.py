@@ -1,5 +1,4 @@
 from pathlib import Path
-import csv
 
 from simulation_game.Cell import Cell
 from simulation_game.Experiments import run_single_line_experiment
