@@ -46,7 +46,7 @@ Run the 100-tick experiment with low vegetation, no grazers, and three predators
 python -c "from simulation_game.experiment import run_single_tile_experiment; run_single_tile_experiment('single_tile.png')"
 ```
 
-The resulting PNG contains vegetation, grazer, and predator curves with a caption listing the tile's k-parameters. Run the test with `pytest` to verify the export.
+The resulting PNG contains vegetation, grazer, and predator curves with a caption listing the tile's k-parameters. A sibling CSV contains the data for ticks 0 through 100. Run the test with `pytest` to verify both exports.
 
 
 ## Math
