@@ -17,15 +17,17 @@ class Cell:
     predator: float = 3.0
 
     k_v: float = 0.10
-    k_g: float = 0.01
+    k_g: float = 0.15
     k_gv: float = 1.0
     k_gp: float = 0.01
-    k_p: float = 0.01
+    k_p: float = 0.2
     k_pg: float = 1.0
 
     max_plant: float = 100.0
     max_grazer: float = 50.0
     max_predator: float = 30.0
+
+    activation_mode: str = 'tanh'  # or 'logarithmic'
 
     def clamp_non_negative(self) -> None:
         self.plant = max(0.0, self.plant)
@@ -121,15 +123,15 @@ class HexSimulation:
                     cell.k_v * vegetation * (1.0 - vegetation / cell.max_plant)
                     - cell.k_g * grazers
                 )
-                grazer_derivative = self._logarithmic_derivative(
-                    cell.k_g * grazers,
-                    cell.k_gv * grazers,
-                    vegetation,
-                ) - cell.k_gp * predators
-                predator_derivative = self._logarithmic_derivative(
-                    cell.k_p * predators,
-                    cell.k_pg * predators,
+                grazer_derivative = cell.k_g * grazers * self._act(
+                    cell.activation_mode,
+                    cell.k_gv * vegetation,
                     grazers,
+                ) - cell.k_gp * predators
+                predator_derivative = cell.k_p * predators * self._act(
+                    cell.activation_mode,
+                    cell.k_pg * grazers,
+                    predators,
                 )
 
                 cell.plant = vegetation + vegetation_derivative
@@ -142,12 +144,29 @@ class HexSimulation:
         self._apply_overflow("predator", "max_predator", rounds=2)
 
     @staticmethod
-    def _logarithmic_derivative(
-        coefficient: float, numerator: float, denominator: float
+    def _act(
+        activation_mode: str,
+        a: float, b: float
     ) -> float:
-        if coefficient == 0.0 or numerator <= 0.0 or denominator <= 0.0:
-            return 0.0
-        return coefficient * math.log(numerator / denominator)
+        """
+        If a > b, return value is positive, if a < b, return value is negative-
+        """
+        if activation_mode == "logarithmic":
+            if b < 0.0 or a < 0.0:
+                raise RuntimeError(f"Logarithm of non-positive value encountered"
+                                f"for numerator={a}, denominator={b}")
+            elif b > 0.0 and a == 0.0:
+                return -float('inf')
+            elif b == 0.0 and a > 0.0:
+                return float('inf')
+            elif a==0.0 and b==0.0:
+                return 1.0
+            else:
+                return math.log(a / b)
+        elif activation_mode == "tanh":
+            return math.tanh(a - b)
+        else:
+            raise NotImplementedError(f"Unknown activation mode: {activation_mode}")
 
     def to_dict(self) -> dict[str, object]:
         return {

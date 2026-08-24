@@ -1,26 +1,25 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
-from .app import HexSimulation
+from .app import HexSimulation, Cell
 
 
-def run_single_tile_experiment(output_path: str | Path) -> Path:
-    """Run the configured single-tile experiment and export its curves as PNG."""
+def run_single_tile_experiment(starting_settings: Cell, n_ticks: int, output_path: str | Path) -> Path:
+    """Run the configured single-tile experiment and export PNG and CSV data."""
     import matplotlib.pyplot as plt
 
     simulation = HexSimulation(rows=1, cols=1)
     cell = simulation.grid[0][0]
-    cell.plant = 5.0
-    cell.grazer = 0.0
-    cell.predator = 3.0
+    cell.__dict__.update(starting_settings.__dict__)
 
     ticks = [0]
     plants = [cell.plant]
     grazers = [cell.grazer]
     predators = [cell.predator]
 
-    for tick in range(1, 101):
+    for tick in range(1, n_ticks + 1):
         simulation.tick()
         ticks.append(tick)
         plants.append(cell.plant)
@@ -44,6 +43,12 @@ def run_single_tile_experiment(output_path: str | Path) -> Path:
 
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
+    csv_path = destination.with_suffix(".csv")
+    with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(["tick", "vegetation", "grazers", "predators"])
+        writer.writerows(zip(ticks, plants, grazers, predators))
+
     figure.savefig(destination, format="png", dpi=150)
     plt.close(figure)
     return destination
