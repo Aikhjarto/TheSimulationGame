@@ -3,302 +3,11 @@ from __future__ import annotations
 
 import json
 import math
-import random
 import tkinter as tk
-from dataclasses import dataclass
 from tkinter import filedialog, ttk
-from typing import Callable
+from typing import Callable, List, Tuple, Union
 
-
-@dataclass
-class Cell:
-    plant: float = 20.0
-    grazer: float = 8.0
-    predator: float = 3.0
-
-    k_v: float = 0.10
-    k_g: float = 0.15
-    k_gv: float = 1.0
-    k_gp: float = 0.01
-    k_p: float = 0.2
-    k_pg: float = 1.0
-
-    max_plant: float = 100.0
-    max_grazer: float = 50.0
-    max_predator: float = 30.0
-
-    activation_mode: str = 'tanh'  # or 'logarithmic'
-
-    def clamp_non_negative(self) -> None:
-        self.plant = max(0.0, self.plant)
-        self.grazer = max(0.0, self.grazer)
-        self.predator = max(0.0, self.predator)
-
-
-class HexSimulation:
-    def __init__(self, rows: int, cols: int) -> None:
-        self.rows = rows
-        self.cols = cols
-        self.grid: list[list[Cell]] = [[Cell() for _ in range(cols)] for _ in range(rows)]
-        self.edges: dict[tuple[tuple[int, int], tuple[int, int]], float] = {}
-        self._init_edges(1.0)
-
-    def _init_edges(self, traversability: float) -> None:
-        self.edges.clear()
-        for r in range(self.rows):
-            for c in range(self.cols):
-                for nr, nc in self.neighbors(r, c):
-                    key = self.edge_key((r, c), (nr, nc))
-                    if key not in self.edges:
-                        self.edges[key] = traversability
-
-    @staticmethod
-    def edge_key(a: tuple[int, int], b: tuple[int, int]) -> tuple[tuple[int, int], tuple[int, int]]:
-        return (a, b) if a <= b else (b, a)
-
-    def in_bounds(self, r: int, c: int) -> bool:
-        return 0 <= r < self.rows and 0 <= c < self.cols
-
-    def neighbors(self, r: int, c: int) -> list[tuple[int, int]]:
-        if r % 2 == 0:
-            directions = [(-1, -1), (-1, 0), (0, -1), (0, 1), (1, -1), (1, 0)]
-        else:
-            directions = [(-1, 0), (-1, 1), (0, -1), (0, 1), (1, 0), (1, 1)]
-        result: list[tuple[int, int]] = []
-        for dr, dc in directions:
-            nr = r + dr
-            nc = c + dc
-            if self.in_bounds(nr, nc):
-                result.append((nr, nc))
-        return result
-
-    def traversability(self, a: tuple[int, int], b: tuple[int, int]) -> float:
-        return self.edges.get(self.edge_key(a, b), 0.0)
-
-    def set_traversability(self, a: tuple[int, int], b: tuple[int, int], value: float) -> None:
-        if not self.in_bounds(*a) or not self.in_bounds(*b):
-            return
-        if b not in self.neighbors(*a):
-            return
-        self.edges[self.edge_key(a, b)] = max(0.0, min(1.0, value))
-
-    def clear_map(self) -> None:
-        for row in self.grid:
-            for cell in row:
-                cell.plant = 0.0
-                cell.grazer = 0.0
-                cell.predator = 0.0
-        self._init_edges(1.0)
-
-    def randomize(self) -> None:
-        for row in self.grid:
-            for cell in row:
-                cell.max_plant = random.uniform(70.0, 150.0)
-                cell.max_grazer = random.uniform(30.0, 70.0)
-                cell.max_predator = random.uniform(15.0, 45.0)
-
-                cell.k_v = random.uniform(0.05, 0.2)
-                cell.k_g = random.uniform(0.005, 0.02)
-                cell.k_gv = random.uniform(0.5, 2.0)
-                cell.k_gp = random.uniform(0.005, 0.02)
-                cell.k_p = random.uniform(0.005, 0.02)
-                cell.k_pg = random.uniform(0.5, 2.0)
-
-                cell.plant = random.uniform(0.0, cell.max_plant)
-                cell.grazer = random.uniform(0.0, cell.max_grazer)
-                cell.predator = random.uniform(0.0, cell.max_predator)
-
-        for key in list(self.edges):
-            self.edges[key] = random.uniform(0.0, 1.0)
-
-    def tick(self) -> None:
-        for r in range(self.rows):
-            for c in range(self.cols):
-                cell = self.grid[r][c]
-
-                vegetation = cell.plant
-                grazers = cell.grazer
-                predators = cell.predator
-                vegetation_derivative = (
-                    cell.k_v * vegetation * (1.0 - vegetation / cell.max_plant)
-                    - cell.k_g * grazers
-                )
-                grazer_derivative = cell.k_g * grazers * self._act(
-                    cell.activation_mode,
-                    cell.k_gv * vegetation,
-                    grazers,
-                ) - cell.k_gp * predators
-                predator_derivative = cell.k_p * predators * self._act(
-                    cell.activation_mode,
-                    cell.k_pg * grazers,
-                    predators,
-                )
-
-                cell.plant = vegetation + vegetation_derivative
-                cell.grazer = grazers + grazer_derivative
-                cell.predator = predators + predator_derivative
-                cell.clamp_non_negative()
-
-        self._apply_overflow("plant", "max_plant", rounds=2)
-        self._apply_overflow("grazer", "max_grazer", rounds=2)
-        self._apply_overflow("predator", "max_predator", rounds=2)
-
-    @staticmethod
-    def _act(
-        activation_mode: str,
-        a: float, b: float
-    ) -> float:
-        """
-        If a > b, return value is positive, if a < b, return value is negative-
-        """
-        if activation_mode == "logarithmic":
-            if b < 0.0 or a < 0.0:
-                raise RuntimeError(f"Logarithm of non-positive value encountered"
-                                f"for numerator={a}, denominator={b}")
-            elif b > 0.0 and a == 0.0:
-                return -float('inf')
-            elif b == 0.0 and a > 0.0:
-                return float('inf')
-            elif a==0.0 and b==0.0:
-                return 1.0
-            else:
-                return math.log(a / b)
-        elif activation_mode == "tanh":
-            return math.tanh(a - b)
-        else:
-            raise NotImplementedError(f"Unknown activation mode: {activation_mode}")
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "rows": self.rows,
-            "cols": self.cols,
-            "cells": [[cell.__dict__.copy() for cell in row] for row in self.grid],
-            "edges": [
-                {
-                    "a": [a[0], a[1]],
-                    "b": [b[0], b[1]],
-                    "traversability": value,
-                }
-                for (a, b), value in self.edges.items()
-            ],
-        }
-
-    def load_dict(self, payload: dict[str, object]) -> None:
-        rows_raw = payload.get("rows")
-        cols_raw = payload.get("cols")
-        if not isinstance(rows_raw, (int, float, str)):
-            raise ValueError("Invalid row count")
-        if not isinstance(cols_raw, (int, float, str)):
-            raise ValueError("Invalid column count")
-
-        rows = int(rows_raw)
-        cols = int(cols_raw)
-        cells = payload["cells"]
-        edges = payload["edges"]
-
-        if not isinstance(cells, list) or len(cells) != rows:
-            raise ValueError("Invalid cell payload dimensions")
-
-        new_grid: list[list[Cell]] = []
-        for row in cells:
-            if not isinstance(row, list) or len(row) != cols:
-                raise ValueError("Invalid cell row dimensions")
-
-            new_row: list[Cell] = []
-            for item in row:
-                if not isinstance(item, dict):
-                    raise ValueError("Invalid cell payload entry")
-
-                new_row.append(
-                    Cell(
-                        plant=float(item.get("plant", 0.0)),
-                        grazer=float(item.get("grazer", 0.0)),
-                        predator=float(item.get("predator", 0.0)),
-                        k_v=float(item.get("k_v", 0.10)),
-                        k_g=float(item.get("k_g", 0.01)),
-                        k_gv=float(item.get("k_gv", 1.0)),
-                        k_gp=float(item.get("k_gp", 0.01)),
-                        k_p=float(item.get("k_p", 0.01)),
-                        k_pg=float(item.get("k_pg", 1.0)),
-                        max_plant=max(0.01, float(item.get("max_plant", 1.0))),
-                        max_grazer=max(0.01, float(item.get("max_grazer", 1.0))),
-                        max_predator=max(0.01, float(item.get("max_predator", 1.0))),
-                    )
-                )
-            new_grid.append(new_row)
-
-        new_edges: dict[tuple[tuple[int, int], tuple[int, int]], float] = {}
-        if not isinstance(edges, list):
-            raise ValueError("Invalid edge payload")
-
-        for item in edges:
-            if not isinstance(item, dict):
-                continue
-            a_raw = item.get("a")
-            b_raw = item.get("b")
-            trv = float(item.get("traversability", 1.0))
-            if not isinstance(a_raw, list) or not isinstance(b_raw, list):
-                continue
-            if len(a_raw) != 2 or len(b_raw) != 2:
-                continue
-            a = (int(a_raw[0]), int(a_raw[1]))
-            b = (int(b_raw[0]), int(b_raw[1]))
-            if not (0 <= a[0] < rows and 0 <= a[1] < cols):
-                continue
-            if not (0 <= b[0] < rows and 0 <= b[1] < cols):
-                continue
-
-            key = self.edge_key(a, b)
-            new_edges[key] = max(0.0, min(1.0, trv))
-
-        self.rows = rows
-        self.cols = cols
-        self.grid = new_grid
-        self.edges = {}
-        self._init_edges(1.0)
-        for key, value in new_edges.items():
-            if key in self.edges:
-                self.edges[key] = value
-
-    def _apply_overflow(self, value_attr: str, max_attr: str, rounds: int = 1) -> None:
-        for _ in range(rounds):
-            deltas: dict[tuple[int, int], float] = {}
-            changed = False
-
-            for r in range(self.rows):
-                for c in range(self.cols):
-                    cell = self.grid[r][c]
-                    value = getattr(cell, value_attr)
-                    maximum = getattr(cell, max_attr)
-
-                    if value <= maximum:
-                        continue
-
-                    overflow = value - maximum
-                    weighted_neighbors: list[tuple[tuple[int, int], float]] = []
-                    total_weight = 0.0
-                    for nr, nc in self.neighbors(r, c):
-                        trv = self.traversability((r, c), (nr, nc))
-                        if trv <= 0.0:
-                            continue
-                        weighted_neighbors.append(((nr, nc), trv))
-                        total_weight += trv
-
-                    if total_weight <= 0.0:
-                        continue
-
-                    setattr(cell, value_attr, maximum)
-                    changed = True
-                    for (nr, nc), weight in weighted_neighbors:
-                        share = overflow * (weight / total_weight)
-                        deltas[(nr, nc)] = deltas.get((nr, nc), 0.0) + share
-
-            for (r, c), add in deltas.items():
-                cell = self.grid[r][c]
-                setattr(cell, value_attr, getattr(cell, value_attr) + add)
-
-            if not changed:
-                break
+from simulation_game.HexSimulation import HexSimulation
 
 
 class HexSimulationApp:
@@ -324,7 +33,9 @@ class HexSimulationApp:
         self.cell_polygons: dict[tuple[int, int], int] = {}
         self.tick_count = 0
         self.history_limit = 200
-        self.cell_history: dict[tuple[int, int], list[tuple[int, float, float, float]]] = {}
+        self.cell_history: dict[
+            tuple[int, int], list[tuple[int, float, float, float]]
+        ] = {}
         self.history_windows: dict[tuple[int, int], tuple[tk.Toplevel, tk.Canvas]] = {}
 
         self._reset_histories()
@@ -342,7 +53,9 @@ class HexSimulationApp:
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(0, weight=1)
 
-        self.canvas = tk.Canvas(frame, bg="#10281d", width=980, height=680, highlightthickness=0)
+        self.canvas = tk.Canvas(
+            frame, bg="#10281d", width=980, height=680, highlightthickness=0
+        )
         self.canvas.grid(row=0, column=0, sticky="nsew")
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<Double-Button-1>", self._on_double_click)
@@ -357,21 +70,25 @@ class HexSimulationApp:
             row=0, column=0, sticky="w", pady=(0, 6)
         )
 
-        self.pause_btn = ttk.Button(controls, text="Pause", command=self._toggle_running)
+        self.pause_btn = ttk.Button(
+            controls, text="Pause", command=self._toggle_running
+        )
         self.pause_btn.grid(row=1, column=0, sticky="ew", pady=2)
 
         ttk.Button(controls, text="Single Step", command=self._single_step).grid(
             row=2, column=0, sticky="ew", pady=2
         )
 
-        ttk.Label(controls, text="Speed (ticks/sec)").grid(row=3, column=0, sticky="w", pady=(8, 0))
-        ttk.Scale(controls, from_=0.5, to=20.0, variable=self.speed_var, orient="horizontal").grid(
-            row=4, column=0, sticky="ew"
+        ttk.Label(controls, text="Speed (ticks/sec)").grid(
+            row=3, column=0, sticky="w", pady=(8, 0)
         )
+        ttk.Scale(
+            controls, from_=0.5, to=20.0, variable=self.speed_var, orient="horizontal"
+        ).grid(row=4, column=0, sticky="ew")
 
-        ttk.Button(controls, text="Toggle Circles/Numbers", command=self._toggle_mode).grid(
-            row=5, column=0, sticky="ew", pady=(8, 2)
-        )
+        ttk.Button(
+            controls, text="Toggle Circles/Numbers", command=self._toggle_mode
+        ).grid(row=5, column=0, sticky="ew", pady=(8, 2))
         ttk.Button(controls, text="Clear Map", command=self._clear_map).grid(
             row=6, column=0, sticky="ew", pady=2
         )
@@ -412,12 +129,16 @@ class HexSimulationApp:
             "set_edge_traversability",
         ]
 
-        ttk.Combobox(controls, textvariable=self.tool_var, values=tools, state="readonly").grid(
-            row=12, column=0, sticky="ew"
-        )
+        ttk.Combobox(
+            controls, textvariable=self.tool_var, values=tools, state="readonly"
+        ).grid(row=12, column=0, sticky="ew")
 
-        ttk.Label(controls, text="Tool Value").grid(row=13, column=0, sticky="w", pady=(6, 0))
-        ttk.Entry(controls, textvariable=self.value_var).grid(row=14, column=0, sticky="ew")
+        ttk.Label(controls, text="Tool Value").grid(
+            row=13, column=0, sticky="w", pady=(6, 0)
+        )
+        ttk.Entry(controls, textvariable=self.value_var).grid(
+            row=14, column=0, sticky="ew"
+        )
         ttk.Label(
             controls,
             text="Click or drag to apply to cells.\nFor edges, click between two neighbors.",
@@ -447,14 +168,21 @@ class HexSimulationApp:
         ttk.Label(controls, text="Details", font=("Segoe UI", 10, "bold")).grid(
             row=22, column=0, sticky="w"
         )
-        info = ttk.Label(controls, textvariable=self.info_var, justify="left", wraplength=270)
+        info = ttk.Label(
+            controls, textvariable=self.info_var, justify="left", wraplength=270
+        )
         info.grid(row=23, column=0, sticky="ew")
 
     def _hex_points(self, cx: float, cy: float) -> list[float]:
         points: list[float] = []
         for i in range(6):
             angle = math.radians(60 * i - 30)
-            points.extend([cx + self.hex_size * math.cos(angle), cy + self.hex_size * math.sin(angle)])
+            points.extend(
+                [
+                    cx + self.hex_size * math.cos(angle),
+                    cy + self.hex_size * math.sin(angle),
+                ]
+            )
         return points
 
     def _center_for(self, r: int, c: int) -> tuple[float, float]:
@@ -529,7 +257,7 @@ class HexSimulationApp:
                 self._draw_cell_data(r, c, tag)
 
         # Draw traversability directly on shared hex edges.
-        for (a, b, trv) in self._iter_edges_once():
+        for a, b, trv in self._iter_edges_once():
             x1, y1, x2, y2 = self._shared_edge_segment(a, b)
             self.canvas.create_line(
                 x1,
@@ -593,7 +321,9 @@ class HexSimulationApp:
                 return int(rs), int(cs)
         return None
 
-    def _find_neighbor_pair_for_edge_edit(self, x: float, y: float) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    def _find_neighbor_pair_for_edge_edit(
+        self, x: float, y: float
+    ) -> tuple[tuple[int, int], tuple[int, int]] | None:
         distances: list[tuple[float, tuple[int, int]]] = []
         for coord, (cx, cy) in self.cell_centers.items():
             d2 = (x - cx) ** 2 + (y - cy) ** 2
@@ -776,7 +506,9 @@ class HexSimulationApp:
         self.model.clear_map()
         self.running = False
         self.pause_btn.configure(text="Resume")
-        self.info_var.set("Map cleared: all plant, grazer, and predator values set to 0.")
+        self.info_var.set(
+            "Map cleared: all plant, grazer, and predator values set to 0."
+        )
         self.tick_count += 1
         self._record_all_histories()
         self._redraw_all()
@@ -848,7 +580,9 @@ class HexSimulationApp:
         key = (r, c)
         if key not in self.cell_history:
             self.cell_history[key] = []
-        self.cell_history[key].append((self.tick_count, cell.plant, cell.grazer, cell.predator))
+        self.cell_history[key].append(
+            (self.tick_count, cell.plant, cell.grazer, cell.predator)
+        )
 
         # Keep only the last N ticks of history for each cell.
         min_tick = self.tick_count - self.history_limit + 1

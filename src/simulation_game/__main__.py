@@ -1,5 +1,4 @@
-from simulation_game.app import main
-
+from simulation_game.HexSimulationApp import main
 
 if __name__ == "__main__":
     main()
