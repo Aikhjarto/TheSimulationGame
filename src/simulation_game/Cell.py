@@ -7,26 +7,29 @@ from dataclasses import dataclass
 class Cell:
     def __init__(
         self,
-        plant: float = 20.0,
+        vegetation: float = 20.0,
         grazer: float = 8.0,
         predator: float = 3.0,
-        k_v: float = 0.10,
+        k_v: float = 0.50,
         k_g: float = 0.15,
-        k_gv: float = 1.0,
+        k_gv: float = 1/3.0,
         k_gp: float = 0.01,
         k_p: float = 0.2,
-        k_pg: float = 1.0,
-        max_plant: float = 100.0,
+        k_pg: float = 1/2.0,
+        max_vegetation: float = 100.0,
         max_grazer: float = 50.0,
         max_predator: float = 30.0,
         hist_length: int = 1000,
         activation_mode: str = "tanh",
         name: str = "cell",
     ):
-        self.plant: float = plant
+        self.vegetation: float = vegetation
         self.grazer: float = grazer
         self.predator: float = predator
         self.name: str = name
+
+        self.grazer_transfer: float = 0.0
+        self.predator_transfer: float = 0.0
 
         self.k_v: float = k_v
         self.k_g: float = k_g
@@ -35,19 +38,42 @@ class Cell:
         self.k_p: float = k_p
         self.k_pg: float = k_pg
 
-        self.max_plant: float = max_plant
+        self.max_vegetation: float = max_vegetation
         self.max_grazer: float = max_grazer
         self.max_predator: float = max_predator
 
         self.activation_mode: str = activation_mode  # tanh or 'logarithmic'
 
         self._hist_length = 1000
-        self.hist_plant: deque[float] = deque(maxlen=self._hist_length)
+        self.hist_vegetation: deque[float] = deque(maxlen=self._hist_length)
         self.hist_grazer: deque[float] = deque(maxlen=self._hist_length)
         self.hist_predator: deque[float] = deque(maxlen=self._hist_length)
         self.hist_length = (
             hist_length  # Initialize history deques with the specified length
         )
+
+        self._starved_grazers: float | None= None
+        self._starved_predators: float | None= None
+
+    @property
+    def starved_grazers(self) -> float:
+        """Return the number of grazers that are starved (i.e., not enough vegetation)."""
+        self._starved_grazers = (
+            self.k_g
+            * self.grazer
+            * self._act(self.activation_mode, self.k_gv * self.vegetation, self.grazer)
+        )
+        return max(0.0, self._starved_grazers)  # Ensure non-negative value
+
+    @property
+    def starved_predators(self) -> float:
+        """Return the number of predators that are starved (i.e., not enough grazers)."""
+        self._starved_predators = (
+            self.k_p
+            * self.predator
+            * self._act(self.activation_mode, self.k_pg * self.grazer, self.predator)
+        )
+        return max(0.0, self._starved_predators)  # Ensure non-negative value
 
     @staticmethod
     def _act(activation_mode: str, a: float, b: float) -> float:
@@ -74,38 +100,40 @@ class Cell:
             raise NotImplementedError(f"Unknown activation mode: {activation_mode}")
 
     def tick(self):
-        vegetation = self.plant
-        grazers = self.grazer
-        predators = self.predator
+
+        # apply transfer of grazers and predators from neighboring cells
+        self.grazer += self.grazer_transfer
+        self.predator += self.predator_transfer
+
         vegetation_derivative = (
-            self.k_v * vegetation * (1.0 - vegetation / self.max_plant)
-            - self.k_g * grazers
+            self.k_v * self.vegetation * (1.0 - self.vegetation / self.max_vegetation)
+            - self.k_g * self.grazer
         )
         grazer_derivative = (
             self.k_g
-            * grazers
-            * self._act(self.activation_mode, self.k_gv * vegetation, grazers)
-            - self.k_gp * predators
+            * self.grazer
+            * self._act(self.activation_mode, self.k_gv * self.vegetation, self.grazer)
+            - self.k_gp * self.predator
         )
         predator_derivative = (
             self.k_p
-            * predators
-            * self._act(self.activation_mode, self.k_pg * grazers, predators)
+            * self.predator
+            * self._act(self.activation_mode, self.k_pg * self.grazer, self.predator)
         )
 
-        self.plant = vegetation + vegetation_derivative
-        self.grazer = grazers + grazer_derivative
-        self.predator = predators + predator_derivative
+        self.vegetation = self.vegetation + vegetation_derivative
+        self.grazer = self.grazer + grazer_derivative
+        self.predator = self.predator + predator_derivative
         self.clamp_non_negative()
         self.append_hist()
 
     def clamp_non_negative(self) -> None:
-        self.plant = max(0.0, self.plant)
+        self.vegetation = max(0.0, self.vegetation)
         self.grazer = max(0.0, self.grazer)
         self.predator = max(0.0, self.predator)
 
     def append_hist(self):
-        self.hist_plant.append(self.plant)
+        self.hist_vegetation.append(self.vegetation)
         self.hist_grazer.append(self.grazer)
         self.hist_predator.append(self.predator)
 
@@ -115,6 +143,6 @@ class Cell:
 
     @hist_length.setter
     def hist_length(self, len: int):
-        self.hist_plant = deque(self.hist_plant, maxlen=len)
+        self.hist_vegetation = deque(self.hist_vegetation, maxlen=len)
         self.hist_grazer = deque(self.hist_grazer, maxlen=len)
         self.hist_predator = deque(self.hist_predator, maxlen=len)

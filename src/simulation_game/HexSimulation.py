@@ -71,7 +71,7 @@ class HexSimulation:
     def clear_map(self) -> None:
         for row in self.grid:
             for cell in row:
-                cell.plant = 0.0
+                cell.vegetation = 0.0
                 cell.grazer = 0.0
                 cell.predator = 0.0
         self._init_edges(1.0)
@@ -79,7 +79,7 @@ class HexSimulation:
     def randomize(self) -> None:
         for row in self.grid:
             for cell in row:
-                cell.max_plant = random.uniform(70.0, 150.0)
+                cell.max_vegetation = random.uniform(70.0, 150.0)
                 cell.max_grazer = random.uniform(30.0, 70.0)
                 cell.max_predator = random.uniform(15.0, 45.0)
 
@@ -90,7 +90,7 @@ class HexSimulation:
                 cell.k_p = random.uniform(0.005, 0.02)
                 cell.k_pg = random.uniform(0.5, 2.0)
 
-                cell.plant = random.uniform(0.0, cell.max_plant)
+                cell.vegetation = random.uniform(0.0, cell.max_vegetation)
                 cell.grazer = random.uniform(0.0, cell.max_grazer)
                 cell.predator = random.uniform(0.0, cell.max_predator)
 
@@ -98,14 +98,32 @@ class HexSimulation:
             self.edges[key] = random.uniform(0.0, 1.0)
 
     def tick(self) -> None:
+
+        # update movement of grazers and predators based on starved individuals and traversability
+        for r in range(self.rows):
+            for c in range(self.cols):
+                cell = self.grid[r][c]
+                grazer_transfer = 0.0
+                predator_transfer = 0.0
+                # for neighbor in self.neighbors(r, c):
+                for nr, nc in self.neighbors(r, c):
+                    trv = self.traversability((r, c), (nr, nc))
+                    if trv <= 0.0:
+                        continue
+                    grazer_transfer += self.grid[nr][nc].starved_grazers * trv
+                    predator_transfer += self.grid[nr][nc].starved_predators * trv
+                cell.grazer_transfer = grazer_transfer
+                cell.predator_transfer = predator_transfer
+
         for r in range(self.rows):
             for c in range(self.cols):
                 cell = self.grid[r][c]
                 cell.tick()
 
-        self._apply_overflow("plant", "max_plant", rounds=2)
-        self._apply_overflow("grazer", "max_grazer", rounds=2)
-        self._apply_overflow("predator", "max_predator", rounds=2)
+        # TODO: transfer due to overpolution
+        #self._apply_overflow("vegetation", "max_vegetation", rounds=2)
+        #self._apply_overflow("grazer", "max_grazer", rounds=2)
+        #self._apply_overflow("predator", "max_predator", rounds=2)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -150,7 +168,7 @@ class HexSimulation:
 
                 new_row.append(
                     Cell(
-                        plant=float(item.get("plant", 0.0)),
+                        vegetation=float(item.get("vegetation", 0.0)),
                         grazer=float(item.get("grazer", 0.0)),
                         predator=float(item.get("predator", 0.0)),
                         k_v=float(item.get("k_v", 0.10)),
@@ -159,7 +177,7 @@ class HexSimulation:
                         k_gp=float(item.get("k_gp", 0.01)),
                         k_p=float(item.get("k_p", 0.01)),
                         k_pg=float(item.get("k_pg", 1.0)),
-                        max_plant=max(0.01, float(item.get("max_plant", 1.0))),
+                        max_vegetation=max(0.01, float(item.get("max_vegetation", 1.0))),
                         max_grazer=max(0.01, float(item.get("max_grazer", 1.0))),
                         max_predator=max(0.01, float(item.get("max_predator", 1.0))),
                     )
@@ -246,7 +264,7 @@ class HexSimulation:
         for r in range(self.rows):
             for c in range(self.cols):
                 cell = self.grid[r][c]
-                ticks = range(len(cell.hist_plant))
+                ticks = range(len(cell.hist_vegetation))
                 csv_path = destination.joinpath(
                     f"hex_simulation_{r}x{c}_{cell.name}.csv"
                 )
@@ -255,7 +273,7 @@ class HexSimulation:
                     writer.writerow(["tick", "vegetation", "grazers", "predators"])
                     writer.writerows(
                         zip(
-                            ticks, cell.hist_plant, cell.hist_grazer, cell.hist_predator
+                            ticks, cell.hist_vegetation, cell.hist_grazer, cell.hist_predator
                         )
                     )
 
@@ -274,11 +292,11 @@ class HexSimulation:
                         f"k_v={cell.k_v:g}, k_g={cell.k_g:g}, k_gv={cell.k_gv:g}, "
                         f"k_gp={cell.k_gp:g}, k_p={cell.k_p:g}, k_pg={cell.k_pg:g}"
                     )
-                    ticks = range(len(cell.hist_plant))
+                    ticks = range(len(cell.hist_vegetation))
                     axis.clear()
                     caption.set_text(parameters)
                     axis.plot(
-                        ticks, cell.hist_plant, label="Vegetation", color="#4caa62"
+                        ticks, cell.hist_vegetation, label="Vegetation", color="#4caa62"
                     )
                     axis.plot(ticks, cell.hist_grazer, label="Grazers", color="#d4a72c")
                     axis.plot(

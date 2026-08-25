@@ -24,7 +24,7 @@ class HexSimulationApp:
         self.dragging = False
         self.long_press_id: str | None = None
 
-        self.tool_var = tk.StringVar(value="spawn_plant")
+        self.tool_var = tk.StringVar(value="spawn_vegetation")
         self.value_var = tk.StringVar(value="10")
         self.speed_var = tk.DoubleVar(value=4.0)
         self.info_var = tk.StringVar(value="Hover over a cell to inspect details.")
@@ -111,10 +111,10 @@ class HexSimulationApp:
         )
 
         tools = [
-            "spawn_plant",
+            "spawn_vegetation",
             "spawn_grazer",
             "spawn_predator",
-            "set_plant",
+            "set_vegetation",
             "set_grazer",
             "set_predator",
             "set_k_v",
@@ -123,7 +123,7 @@ class HexSimulationApp:
             "set_k_gp",
             "set_k_p",
             "set_k_pg",
-            "set_max_plant",
+            "set_max_vegetation",
             "set_max_grazer",
             "set_max_predator",
             "set_edge_traversability",
@@ -152,10 +152,10 @@ class HexSimulationApp:
         ttk.Label(controls, text="Legend", font=("Segoe UI", 10, "bold")).grid(
             row=17, column=0, sticky="w"
         )
-        ttk.Label(controls, text="Green circle: Plant matter").grid(
+        ttk.Label(controls, text="Green circle: Vegetation").grid(
             row=18, column=0, sticky="w"
         )
-        ttk.Label(controls, text="Gold circle: grazer animals").grid(
+        ttk.Label(controls, text="Gold circle: Grazer animals").grid(
             row=19, column=0, sticky="w"
         )
         ttk.Label(controls, text="Red circle: Predator animals").grid(
@@ -276,7 +276,7 @@ class HexSimulationApp:
 
         if self.show_numbers.get():
             text = (
-                f"pl {cell.plant:.0f}\n"
+                f"pl {cell.vegetation:.0f}\n"
                 f"pr {cell.grazer:.0f}\n"
                 f"pd {cell.predator:.0f}"
             )
@@ -291,7 +291,7 @@ class HexSimulationApp:
             return
 
         ratios = [
-            (cell.plant / max(cell.max_plant, 1e-6), "#62d96b", (-11.0, -8.0)),
+            (cell.vegetation / max(cell.max_vegetation, 1e-6), "#62d96b", (-11.0, -8.0)),
             (cell.grazer / max(cell.max_grazer, 1e-6), "#f2cf4a", (11.0, -8.0)),
             (cell.predator / max(cell.max_predator, 1e-6), "#e05b5b", (0.0, 11.0)),
         ]
@@ -362,7 +362,7 @@ class HexSimulationApp:
         tool = self.tool_var.get()
 
         direct_map = {
-            "set_plant": "plant",
+            "set_vegetation": "vegetation",
             "set_grazer": "grazer",
             "set_predator": "predator",
             "set_k_v": "k_v",
@@ -371,7 +371,7 @@ class HexSimulationApp:
             "set_k_gp": "k_gp",
             "set_k_p": "k_p",
             "set_k_pg": "k_pg",
-            "set_max_plant": "max_plant",
+            "set_max_vegetation": "max_vegetation",
             "set_max_grazer": "max_grazer",
             "set_max_predator": "max_predator",
         }
@@ -385,8 +385,8 @@ class HexSimulationApp:
             else:
                 value = max(0.0, value)
             setattr(cell, attr, value)
-        elif tool == "spawn_plant":
-            cell.plant = max(0.0, cell.plant + value)
+        elif tool == "spawn_vegetation":
+            cell.vegetation = max(0.0, cell.vegetation + value)
         elif tool == "spawn_grazer":
             cell.grazer = max(0.0, cell.grazer + value)
         elif tool == "spawn_predator":
@@ -475,14 +475,14 @@ class HexSimulationApp:
             "\n".join(
                 [
                     f"Cell ({r}, {c})",
-                    f"plant={cell.plant:.2f}, grazer={cell.grazer:.2f}, predator={cell.predator:.2f}",
+                    f"vegetation={cell.vegetation:.2f}, grazer={cell.grazer:.2f}, predator={cell.predator:.2f}",
                     "k_v={:.2f}, k_g={:.2f}, k_gv={:.2f}".format(
                         cell.k_v, cell.k_g, cell.k_gv
                     ),
                     "k_gp={:.2f}, k_p={:.2f}, k_pg={:.2f}".format(
                         cell.k_gp, cell.k_p, cell.k_pg
                     ),
-                    f"max_plant={cell.max_plant:.2f}, max_grazer={cell.max_grazer:.2f}, max_predator={cell.max_predator:.2f}",
+                    f"max_vegetation={cell.max_vegetation:.2f}, max_grazer={cell.max_grazer:.2f}, max_predator={cell.max_predator:.2f}",
                     "edges: " + ", ".join(edge_parts),
                 ]
             )
@@ -507,7 +507,7 @@ class HexSimulationApp:
         self.running = False
         self.pause_btn.configure(text="Resume")
         self.info_var.set(
-            "Map cleared: all plant, grazer, and predator values set to 0."
+            "Map cleared: all vegetation, grazer, and predator values set to 0."
         )
         self.tick_count += 1
         self._record_all_histories()
@@ -581,7 +581,7 @@ class HexSimulationApp:
         if key not in self.cell_history:
             self.cell_history[key] = []
         self.cell_history[key].append(
-            (self.tick_count, cell.plant, cell.grazer, cell.predator)
+            (self.tick_count, cell.vegetation, cell.grazer, cell.predator)
         )
 
         # Keep only the last N ticks of history for each cell.
@@ -670,7 +670,7 @@ class HexSimulationApp:
         )
 
         legend = [
-            ("Plant", "#62d96b"),
+            ("vegetation", "#62d96b"),
             ("grazer", "#f2cf4a"),
             ("Predator", "#e05b5b"),
         ]
@@ -705,11 +705,11 @@ class HexSimulationApp:
             return
 
         times = [p[0] for p in history]
-        plants = [p[1] for p in history]
+        vegetation = [p[1] for p in history]
         grazers = [p[2] for p in history]
         predators = [p[3] for p in history]
 
-        all_values = plants + grazers + predators
+        all_values = vegetation + grazers + predators
         y_max = max(1.0, max(all_values))
         y_min = 0.0
         x_min = float(min(times))
@@ -735,7 +735,7 @@ class HexSimulationApp:
                 text=f"{value:.0f}",
             )
 
-        self._draw_series_line(history_canvas, times, plants, "#62d96b", to_xy)
+        self._draw_series_line(history_canvas, times, vegetation, "#62d96b", to_xy)
         self._draw_series_line(history_canvas, times, grazers, "#f2cf4a", to_xy)
         self._draw_series_line(history_canvas, times, predators, "#e05b5b", to_xy)
 
